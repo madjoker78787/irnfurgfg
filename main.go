@@ -1,3 +1,4 @@
+// main.go
 package main
 
 import (
@@ -8,12 +9,14 @@ import (
 	"sync"
 )
 
+// Task - структура задачи
 type Task struct {
-	ID    int    `json:"id"`
-	Title string `json:"title"`
-	Done  bool   `json:"done"`
+	ID    int    `json:"id"`    // уникальный id задачи
+	Title string `json:"title"` // заголовок задачи
+	Done  bool   `json:"done"`  // выполнена или нет
 }
 
+// Создадим простое in-memory хранилище задач с синхронизацией
 type TaskStore struct {
 	mu     sync.Mutex
 	tasks  map[int]Task
@@ -27,6 +30,7 @@ func NewTaskStore() *TaskStore {
 	}
 }
 
+// Добавляем новую задачу, возвращаем созданную
 func (s *TaskStore) CreateTask(title string) Task {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -40,21 +44,23 @@ func (s *TaskStore) CreateTask(title string) Task {
 	return task
 }
 
+// Получаем все задачи
 func (s *TaskStore) GetAllTasks() []Task {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	tasks := make([]Task, len(s.tasks))
+	tasks := make([]Task, 0, len(s.tasks))
 	for _, t := range s.tasks {
 		tasks = append(tasks, t)
 	}
 	return tasks
 }
 
+// Обновляем состояние задачи (например, mark done)
 func (s *TaskStore) UpdateTask(id int, done bool) (Task, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	task, ok := s.tasks[id]
-	if !ok {
+	task, exists := s.tasks[id]
+	if !exists {
 		return Task{}, false
 	}
 	task.Done = done
@@ -62,6 +68,7 @@ func (s *TaskStore) UpdateTask(id int, done bool) (Task, bool) {
 	return task, true
 }
 
+// Удаляем задачу
 func (s *TaskStore) DeleteTask(id int) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -72,21 +79,17 @@ func (s *TaskStore) DeleteTask(id int) bool {
 	return true
 }
 
-func jsonResponse(w http.ResponseWriter, data interface{}, code int) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(code)
-	json.NewEncoder(w).Encode(data)
-}
-
 func main() {
 	store := NewTaskStore()
+
 	http.HandleFunc("/tasks", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
-		case http.MethodGet:
-			//возвращаем все задачи
+		case "GET":
+			// Возвращаем все задачи
 			tasks := store.GetAllTasks()
 			jsonResponse(w, tasks, http.StatusOK)
-		case http.MethodPost:
+		case "POST":
+			// Создаем новую задачу – читаем из тела JSON с ключом "title"
 			var input struct {
 				Title string `json:"title"`
 			}
@@ -97,11 +100,13 @@ func main() {
 			task := store.CreateTask(input.Title)
 			jsonResponse(w, task, http.StatusCreated)
 		default:
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
 		}
 	})
 
+	// Эндпоинт для обновления и удаления задачи по ID
 	http.HandleFunc("/tasks/", func(w http.ResponseWriter, r *http.Request) {
+		// URL вида /tasks/{id}
 		idStr := r.URL.Path[len("/tasks/"):]
 		id, err := strconv.Atoi(idStr)
 		if err != nil {
@@ -109,7 +114,8 @@ func main() {
 			return
 		}
 		switch r.Method {
-		case http.MethodPut:
+		case "PUT":
+			// Обновляем поле Done
 			var input struct {
 				Done bool `json:"done"`
 			}
@@ -123,16 +129,24 @@ func main() {
 				return
 			}
 			jsonResponse(w, task, http.StatusOK)
-		case http.MethodDelete:
+		case "DELETE":
 			if !store.DeleteTask(id) {
-				http.Error(w, "Task not allowed", http.StatusMethodNotAllowed)
+				http.Error(w, "Task not found", http.StatusNotFound)
 				return
 			}
 			w.WriteHeader(http.StatusNoContent)
 		default:
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
 		}
 	})
+
 	log.Println("Server started at :8080")
 	log.Fatal(http.ListenAndServe(":8080", nil))
+}
+
+// helper для ответа с JSON
+func jsonResponse(w http.ResponseWriter, data interface{}, code int) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	json.NewEncoder(w).Encode(data)
 }

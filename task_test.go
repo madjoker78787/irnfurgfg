@@ -1,10 +1,11 @@
 package main
 
-import "testing"
+import (
+	"testing"
+)
 
 func TestCreateAndGetAllTasks(t *testing.T) {
 	s := NewTaskStore() // создаём новый инстанс
-
 	task := s.CreateTask("Test task")
 
 	tasks := s.GetAllTasks()
